@@ -95,8 +95,11 @@ jobs:
             if (!cartoonCat) { core.setFailed('No "Cartoons" discussion category found.'); return; }
             if (!newsCat)    { core.setFailed('No "News" discussion category found.'); return; }
 
-            // ── helper: create a discussion ───────────────────────────────────
+            // ── helper: create a discussion with rate-limit backoff ───────────
+            function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
             async function postDiscussion(categoryId, title, body) {
+              await sleep(3000); // avoid "submitted too quickly" from GitHub
               const result = await github.graphql(`
                 mutation($repoId: ID!, $categoryId: ID!, $title: String!, $body: String!) {
                   createDiscussion(input: {
@@ -130,10 +133,10 @@ jobs:
               postedCartoons++;
             }
 
-            // ── post new articles ─────────────────────────────────────────────
+            // ── post new articles (cap at 5 per run to avoid rate limits) ────
+            const newArticles = articles.filter(i => !seen.has(i.guid)).slice(0, 5);
             let postedArticles = 0;
-            for (const article of articles) {
-              if (seen.has(article.guid)) continue;
+            for (const article of newArticles) {
 
               let body;
               const isOriginal = article.link.startsWith('https://agentweekly.ai/articles/');
