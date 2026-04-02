@@ -8,6 +8,7 @@ on:
 
 permissions:
   discussions: write
+  contents: write
 
 jobs:
   post-cartoons:
