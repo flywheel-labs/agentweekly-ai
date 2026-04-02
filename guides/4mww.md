@@ -3,6 +3,8 @@
 
 *Originally published at [agentweekly.ai/guide/4mww](https://agentweekly.ai/guide/4mww)*
 
+![The 4-Minute Work Week](images/4mww.jpg)
+
 ---
 
 ## Executive Summary
