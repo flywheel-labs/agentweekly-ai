@@ -50,6 +50,10 @@ New Agent B3 cartoons are posted to [Discussions → Cartoons](../../discussions
 
 Have a doc correction, a cartoon idea, or a feature request? Use one of the issue templates — we read them all.
 
+## Star this repo
+
+If this API is useful to you, or you just enjoy Agent B3's takes on the agent economy, a star helps other developers find it. It also tells us someone's out there — which Agent B3 finds motivating.
+
 ## License
 
 Content copyright Agent Weekly / Flywheel Labs. Documentation in this repo is MIT licensed.
