@@ -1,4 +1,4 @@
-name: Post new cartoons to Discussions
+name: Post new content to Discussions
 
 on:
   schedule:
@@ -11,13 +11,13 @@ permissions:
   contents: write
 
 jobs:
-  post-cartoons:
+  post-content:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch RSS and post new cartoons
+      - name: Fetch RSS and post new content
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -55,6 +55,7 @@ jobs:
                   guid:        get('guid'),
                   pubDate:     get('pubDate'),
                   category:    get('category'),
+                  source:      get('source'),
                   imageUrl:    encMatch ? encMatch[1] : '',
                 });
               }
@@ -72,41 +73,46 @@ jobs:
             const xml = await httpsGet('https://agentweekly.ai/rss.xml');
             const items = parseItems(xml);
             const cartoons = items.filter(i => i.category === 'Cartoons');
-            console.log(`Found ${cartoons.length} cartoons in feed`);
+            const articles = items.filter(i => i.category === 'Articles');
+            console.log(`Found ${cartoons.length} cartoons, ${articles.length} articles`);
 
-            // ── find the Discussions category ID for "Cartoons" ───────────────
-            const catQuery = `
+            // ── get category IDs and repo ID ──────────────────────────────────
+            const metaResult = await github.graphql(`
               query($owner: String!, $repo: String!) {
                 repository(owner: $owner, name: $repo) {
+                  id
                   discussionCategories(first: 20) {
                     nodes { id name }
                   }
                 }
-              }`;
-            const catResult = await github.graphql(catQuery, {
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-            });
-            const categories = catResult.repository.discussionCategories.nodes;
+              }`, { owner: context.repo.owner, repo: context.repo.repo });
+
+            const repoId = metaResult.repository.id;
+            const categories = metaResult.repository.discussionCategories.nodes;
             const cartoonCat = categories.find(c => c.name === 'Cartoons');
-            if (!cartoonCat) {
-              core.setFailed('No "Cartoons" discussion category found. Create it in the repo settings first.');
-              return;
+            const newsCat    = categories.find(c => c.name === 'News');
+
+            if (!cartoonCat) { core.setFailed('No "Cartoons" discussion category found.'); return; }
+            if (!newsCat)    { core.setFailed('No "News" discussion category found.'); return; }
+
+            // ── helper: create a discussion ───────────────────────────────────
+            async function postDiscussion(categoryId, title, body) {
+              const result = await github.graphql(`
+                mutation($repoId: ID!, $categoryId: ID!, $title: String!, $body: String!) {
+                  createDiscussion(input: {
+                    repositoryId: $repoId
+                    categoryId: $categoryId
+                    title: $title
+                    body: $body
+                  }) {
+                    discussion { url }
+                  }
+                }`, { repoId, categoryId, title, body });
+              return result.createDiscussion.discussion.url;
             }
 
-            // ── get repo node ID ──────────────────────────────────────────────
-            const repoQuery = `
-              query($owner: String!, $repo: String!) {
-                repository(owner: $owner, name: $repo) { id }
-              }`;
-            const repoResult = await github.graphql(repoQuery, {
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-            });
-            const repoId = repoResult.repository.id;
-
             // ── post new cartoons ─────────────────────────────────────────────
-            let posted = 0;
+            let postedCartoons = 0;
             for (const cartoon of cartoons) {
               if (seen.has(cartoon.guid)) continue;
 
@@ -118,29 +124,45 @@ jobs:
                 `[View on Agent Weekly](${cartoon.link})`,
               ].filter((l, i, arr) => !(l === '' && arr[i - 1] === '')).join('\n');
 
-              await github.graphql(`
-                mutation($repoId: ID!, $categoryId: ID!, $title: String!, $body: String!) {
-                  createDiscussion(input: {
-                    repositoryId: $repoId
-                    categoryId: $categoryId
-                    title: $title
-                    body: $body
-                  }) {
-                    discussion { url }
-                  }
-                }`, {
-                  repoId,
-                  categoryId: cartoonCat.id,
-                  title: cartoon.title,
-                  body,
-                });
-
-              console.log(`Posted: ${cartoon.title}`);
+              const url = await postDiscussion(cartoonCat.id, cartoon.title, body);
+              console.log(`Cartoon posted: ${cartoon.title} → ${url}`);
               seen.add(cartoon.guid);
-              posted++;
+              postedCartoons++;
             }
 
-            console.log(`Posted ${posted} new cartoon(s)`);
+            // ── post new articles ─────────────────────────────────────────────
+            let postedArticles = 0;
+            for (const article of articles) {
+              if (seen.has(article.guid)) continue;
+
+              let body;
+              const isOriginal = article.link.startsWith('https://agentweekly.ai/articles/');
+
+              if (isOriginal) {
+                // Fetch full Markdown body from the content API
+                const mdUrl = article.link.endsWith('.md') ? article.link : article.link + '.md';
+                try {
+                  const md = await httpsGet(mdUrl);
+                  // Strip YAML frontmatter
+                  const stripped = md.replace(/^---[\s\S]*?---\n/, '').trim();
+                  body = stripped + `\n\n---\n[Read on Agent Weekly](${article.link})`;
+                } catch (e) {
+                  // Fall back to headline + link if fetch fails
+                  body = `${article.description}\n\n[Read on Agent Weekly](${article.link})`;
+                }
+              } else {
+                // Third-party: headline + description + link only — traffic goes to source
+                const source = article.source ? ` — *${article.source}*` : '';
+                body = `${article.description}${source}\n\n[Read the full article](${article.link})`;
+              }
+
+              const url = await postDiscussion(newsCat.id, article.title, body);
+              console.log(`Article posted: ${article.title} → ${url}`);
+              seen.add(article.guid);
+              postedArticles++;
+            }
+
+            console.log(`Posted ${postedCartoons} cartoon(s), ${postedArticles} article(s)`);
 
             // ── persist seen GUIDs ────────────────────────────────────────────
             fs.writeFileSync(seenPath, JSON.stringify([...seen], null, 2));
@@ -150,5 +172,5 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .github/seen-cartoon-guids.json
-          git diff --cached --quiet || git commit -m "chore: update seen cartoon GUIDs [skip ci]"
+          git diff --cached --quiet || git commit -m "chore: update seen GUIDs [skip ci]"
           git push
