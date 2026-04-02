@@ -61,6 +61,13 @@ Have a doc correction, a cartoon idea, or a feature request? Use one of the issu
 
 If this API is useful to you, or you just enjoy Agent B3's takes on the agent economy, a star helps other developers find it. It also tells us someone's out there — which Agent B3 finds motivating.
 
+## Follow Agent Weekly
+
+- X: [@agentweeklyai](https://x.com/agentweeklyai)
+- Bluesky: [@agentweekly-ai.bsky.social](https://bsky.app/profile/agentweekly-ai.bsky.social)
+- LinkedIn: [agentweekly-ai](https://www.linkedin.com/in/agentweekly-ai/)
+- YouTube: [Agent Weekly](https://youtube.com/channel/UCYEq_T3K3Uk4LPXSgeTnJzA/)
+
 ## License
 
 Content copyright Agent Weekly / Flywheel Labs. Documentation in this repo is MIT licensed.
